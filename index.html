@@ -1,0 +1,2290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptoFlow - Enterprise Trading Platform</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chart.js/3.9.1/chart.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <style>
+        .trading-grid { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 1rem; height: 100vh; }
+        .orderbook { font-family: 'Courier New', monospace; font-size: 12px; }
+        .price-up { color: #22c55e; }
+        .price-down { color: #ef4444; }
+        .glow { box-shadow: 0 0 20px rgba(34, 197, 94, 0.3); }
+        .dark-theme { background: #0f172a; color: #e2e8f0; }
+        .social-post { border-left: 4px solid #3b82f6; }
+        .kyc-verified { color: #22c55e; }
+        .kyc-pending { color: #f59e0b; }
+        .kyc-rejected { color: #ef4444; }
+    </style>
+</head>
+<body class="dark-theme">
+    <div id="root"></div>
+
+    <script>
+        const { useState, useEffect, useRef, createContext, useContext } = React;
+        const { createRoot } = ReactDOM;
+
+        // Global State Management (Zustand-like)
+        const GlobalStateContext = createContext();
+
+        const useGlobalState = () => {
+            const context = useContext(GlobalStateContext);
+            if (!context) throw new Error('useGlobalState must be used within GlobalStateProvider');
+            return context;
+        };
+
+        // Security & Crypto utilities
+        const encryptData = (data, key) => {
+            return CryptoJS.AES.encrypt(JSON.stringify(data), key).toString();
+        };
+
+        const decryptData = (encryptedData, key) => {
+            const bytes = CryptoJS.AES.decrypt(encryptedData, key);
+            return JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+        };
+
+        const generateToken = (user) => {
+            const payload = { userId: user.id, email: user.email, exp: Date.now() + 86400000 }; // 24h
+            return CryptoJS.AES.encrypt(JSON.stringify(payload), 'SECRET_KEY').toString();
+        };
+
+        const validateToken = (token) => {
+            try {
+                const bytes = CryptoJS.AES.decrypt(token, 'SECRET_KEY');
+                const payload = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
+                return Date.now() < payload.exp ? payload : null;
+            } catch {
+                return null;
+            }
+        };
+
+        // Rate limiting
+        const rateLimiter = {
+            attempts: {},
+            check: (key, limit = 5, window = 60000) => {
+                const now = Date.now();
+                if (!this.attempts[key]) this.attempts[key] = [];
+                this.attempts[key] = this.attempts[key].filter(time => now - time < window);
+                if (this.attempts[key].length >= limit) return false;
+                this.attempts[key].push(now);
+                return true;
+            }
+        };
+
+        // Advanced Arbitrage Detection Engine
+        const ArbitrageEngine = {
+            exchanges: ['binance', 'coinbase', 'kraken', 'bybit'],
+            
+            async scanArbitrageOpportunities() {
+                const opportunities = [];
+                const symbols = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT'];
+                
+                for (const symbol of symbols) {
+                    const prices = {};
+                    
+                    // Mock getting prices from different exchanges
+                    for (const exchange of this.exchanges) {
+                        prices[exchange] = (Math.random() * 50000 + 30000).toFixed(2);
+                    }
+                    
+                    // Find arbitrage opportunities
+                    const priceArray = Object.entries(prices);
+                    const minPrice = Math.min(...priceArray.map(([, price]) => parseFloat(price)));
+                    const maxPrice = Math.max(...priceArray.map(([, price]) => parseFloat(price)));
+                    const spread = ((maxPrice - minPrice) / minPrice * 100).toFixed(2);
+                    
+                    if (spread > 0.5) { // 0.5% minimum spread
+                        const buyExchange = priceArray.find(([, price]) => parseFloat(price) === minPrice)[0];
+                        const sellExchange = priceArray.find(([, price]) => parseFloat(price) === maxPrice)[0];
+                        
+                        opportunities.push({
+                            symbol,
+                            buyExchange,
+                            sellExchange,
+                            buyPrice: minPrice,
+                            sellPrice: maxPrice,
+                            spread: parseFloat(spread),
+                            profit: (maxPrice - minPrice).toFixed(2),
+                            timestamp: new Date().toISOString()
+                        });
+                    }
+                }
+                
+                return opportunities;
+            },
+
+            async executeArbitrageOrder(opportunity, amount) {
+                // Mock arbitrage execution
+                const executionTime = Math.random() * 2000 + 1000; // 1-3 seconds
+                await new Promise(resolve => setTimeout(resolve, executionTime));
+                
+                const slippage = Math.random() * 0.1; // 0-0.1% slippage
+                const actualProfit = opportunity.profit * amount * (1 - slippage);
+                
+                return {
+                    success: true,
+                    executedAmount: amount,
+                    actualProfit: actualProfit.toFixed(2),
+                    executionTime: executionTime.toFixed(0) + 'ms',
+                    orderId: Date.now().toString()
+                };
+            }
+        };
+
+        // Automated Reporting Engine
+        const ReportingEngine = {
+            generateTaxReport(transactions, taxYear) {
+                const taxableEvents = transactions.filter(tx => 
+                    tx.type === 'sell' || tx.type === 'trade'
+                );
+                
+                let totalGains = 0;
+                let totalLosses = 0;
+                
+                const reportData = taxableEvents.map(tx => {
+                    const gain = tx.sellPrice - tx.buyPrice;
+                    if (gain > 0) {
+                        totalGains += gain;
+                    } else {
+                        totalLosses += Math.abs(gain);
+                    }
+                    
+                    return {
+                        date: tx.date,
+                        asset: tx.asset,
+                        type: tx.type,
+                        buyPrice: tx.buyPrice,
+                        sellPrice: tx.sellPrice,
+                        quantity: tx.quantity,
+                        gainLoss: gain.toFixed(2),
+                        holdingPeriod: this.calculateHoldingPeriod(tx.buyDate, tx.sellDate)
+                    };
+                });
+                
+                return {
+                    taxYear,
+                    totalTransactions: taxableEvents.length,
+                    totalGains: totalGains.toFixed(2),
+                    totalLosses: totalLosses.toFixed(2),
+                    netGainLoss: (totalGains - totalLosses).toFixed(2),
+                    transactions: reportData,
+                    generatedAt: new Date().toISOString()
+                };
+            },
+
+            calculateHoldingPeriod(buyDate, sellDate) {
+                const diffTime = Math.abs(new Date(sellDate) - new Date(buyDate));
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays > 365 ? 'Long-term' : 'Short-term';
+            },
+
+            generateComplianceReport(users, transactions) {
+                const totalUsers = users.length;
+                const verifiedUsers = users.filter(u => u.kycStatus === 'verified').length;
+                const pendingKYC = users.filter(u => u.kycStatus === 'pending').length;
+                const highRiskUsers = users.filter(u => u.kycData?.riskScore > 70).length;
+                
+                const suspiciousTransactions = transactions.filter(tx => 
+                    tx.amount > 10000 || tx.flags?.includes('suspicious')
+                );
+                
+                return {
+                    reportDate: new Date().toISOString(),
+                    userStatistics: {
+                        total: totalUsers,
+                        verified: verifiedUsers,
+                        pendingKYC,
+                        highRisk: highRiskUsers,
+                        verificationRate: ((verifiedUsers / totalUsers) * 100).toFixed(1)
+                    },
+                    transactionStatistics: {
+                        total: transactions.length,
+                        suspicious: suspiciousTransactions.length,
+                        suspiciousRate: ((suspiciousTransactions.length / transactions.length) * 100).toFixed(1)
+                    },
+                    recommendations: [
+                        suspiciousTransactions.length > 5 ? 'Review suspicious transaction patterns' : null,
+                        pendingKYC > 10 ? 'Expedite KYC verification process' : null,
+                        highRiskUsers > 5 ? 'Enhanced monitoring required for high-risk users' : null
+                    ].filter(Boolean)
+                };
+            }
+        };
+        const ExchangeAPI = {
+            exchanges: ['binance', 'coinbase', 'kraken', 'bybit'],
+            
+            async getPrices() {
+                // Mock real-time prices
+                const symbols = ['BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'ADA/USDT'];
+                return symbols.map(symbol => ({
+                    symbol,
+                    price: (Math.random() * 50000 + 1000).toFixed(2),
+                    change24h: ((Math.random() - 0.5) * 10).toFixed(2),
+                    volume: (Math.random() * 1000000).toFixed(0)
+                }));
+            },
+
+            async getOrderbook(symbol) {
+                const generateOrders = (count, basePrice, isAsk = false) => {
+                    return Array.from({ length: count }, (_, i) => {
+                        const price = isAsk ? basePrice + (i * 0.1) : basePrice - (i * 0.1);
+                        const amount = Math.random() * 10;
+                        return { price: price.toFixed(2), amount: amount.toFixed(4) };
+                    });
+                };
+
+                const basePrice = Math.random() * 50000 + 30000;
+                return {
+                    bids: generateOrders(20, basePrice),
+                    asks: generateOrders(20, basePrice, true)
+                };
+            },
+
+            async executeOrder(order) {
+                // Mock order execution
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                return {
+                    orderId: Date.now().toString(),
+                    status: 'filled',
+                    executedPrice: order.price,
+                    executedAmount: order.amount,
+                    timestamp: new Date().toISOString()
+                };
+            }
+        };
+
+        // KYC/AML Compliance Module
+        const ComplianceModule = {
+            async verifyKYC(userData, documents) {
+                // Mock KYC verification
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                const riskScore = Math.random() * 100;
+                const status = riskScore > 70 ? 'rejected' : riskScore > 30 ? 'verified' : 'pending';
+                
+                return {
+                    status,
+                    riskScore: riskScore.toFixed(1),
+                    verificationId: Date.now().toString(),
+                    documents: documents.map(doc => ({
+                        type: doc.type,
+                        status: status === 'verified' ? 'approved' : 'review',
+                        timestamp: new Date().toISOString()
+                    }))
+                };
+            },
+
+            async checkSanctions(userData) {
+                // Mock sanctions screening
+                const sanctionedCountries = ['XX', 'YY'];
+                const isSanctioned = sanctionedCountries.includes(userData.country);
+                
+                return {
+                    isSanctioned,
+                    lists: isSanctioned ? ['OFAC'] : [],
+                    checkDate: new Date().toISOString()
+                };
+            },
+
+            generateComplianceReport(transactions) {
+                const suspiciousThreshold = 10000;
+                const suspicious = transactions.filter(tx => tx.amount > suspiciousThreshold);
+                
+                return {
+                    totalTransactions: transactions.length,
+                    suspiciousTransactions: suspicious.length,
+                    totalVolume: transactions.reduce((sum, tx) => sum + tx.amount, 0),
+                    reportDate: new Date().toISOString(),
+                    recommendations: suspicious.length > 0 ? ['Review high-value transactions'] : []
+                };
+            }
+        };
+
+        // Risk Management Engine
+        const RiskEngine = {
+            calculatePortfolioRisk(portfolio) {
+                const totalValue = portfolio.reduce((sum, asset) => sum + asset.value, 0);
+                const weights = portfolio.map(asset => asset.value / totalValue);
+                
+                // Mock VaR calculation
+                const var95 = totalValue * 0.05 * Math.random();
+                const sharpeRatio = (Math.random() * 2).toFixed(2);
+                
+                return {
+                    totalValue,
+                    var95: var95.toFixed(2),
+                    sharpeRatio,
+                    concentrationRisk: Math.max(...weights).toFixed(2),
+                    recommendedRebalance: weights.some(w => w > 0.3)
+                };
+            },
+
+            checkPositionLimits(user, newPosition) {
+                const maxPositionSize = user.riskProfile === 'conservative' ? 0.1 : 0.3;
+                const currentExposure = user.positions.reduce((sum, pos) => sum + pos.size, 0);
+                
+                return {
+                    allowed: (currentExposure + newPosition.size) <= maxPositionSize,
+                    currentExposure,
+                    maxAllowed: maxPositionSize,
+                    recommendation: currentExposure > 0.8 * maxPositionSize ? 'Reduce position size' : 'Position within limits'
+                };
+            }
+        };
+
+        // Error Boundary Component
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null };
+            }
+
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+
+            componentDidCatch(error, errorInfo) {
+                console.error('Error caught by boundary:', error, errorInfo);
+            }
+
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="min-h-screen flex items-center justify-center bg-gray-900">
+                            <div className="text-center p-8">
+                                <h2 className="text-2xl font-bold text-red-400 mb-4">Something went wrong</h2>
+                                <p className="text-gray-300 mb-4">The application encountered an error</p>
+                                <button 
+                                    onClick={() => window.location.reload()}
+                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white"
+                                >
+                                    Reload Application
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+
+                return this.props.children;
+            }
+        }
+
+        // Trading Chart Component with Chart.js integration
+        const TradingChart = ({ symbol, timeframe }) => {
+            const chartRef = useRef(null);
+            const [chartInstance, setChartInstance] = useState(null);
+
+            useEffect(() => {
+                if (chartRef.current) {
+                    // Destroy existing chart
+                    if (chartInstance) {
+                        chartInstance.destroy();
+                    }
+
+                    // Generate mock OHLCV data
+                    const generateMockData = () => {
+                        const data = [];
+                        let price = 50000 + Math.random() * 10000;
+                        
+                        for (let i = 0; i < 50; i++) {
+                            const open = price;
+                            const close = price + (Math.random() - 0.5) * 1000;
+                            const high = Math.max(open, close) + Math.random() * 500;
+                            const low = Math.min(open, close) - Math.random() * 500;
+                            
+                            data.push({
+                                x: new Date(Date.now() - (49 - i) * 60000).toISOString(),
+                                o: open,
+                                h: high,
+                                l: low,
+                                c: close
+                            });
+                            
+                            price = close;
+                        }
+                        return data;
+                    };
+
+                    const ctx = chartRef.current.getContext('2d');
+                    const newChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            datasets: [{
+                                label: symbol,
+                                data: generateMockData().map(d => ({ x: d.x, y: d.c })),
+                                borderColor: '#22c55e',
+                                backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                                borderWidth: 2,
+                                fill: true,
+                                tension: 0.1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    labels: { color: '#e2e8f0' }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    type: 'time',
+                                    ticks: { color: '#94a3b8' },
+                                    grid: { color: '#374151' }
+                                },
+                                y: {
+                                    ticks: { color: '#94a3b8' },
+                                    grid: { color: '#374151' }
+                                }
+                            }
+                        }
+                    });
+
+                    setChartInstance(newChart);
+                }
+
+                return () => {
+                    if (chartInstance) {
+                        chartInstance.destroy();
+                    }
+                };
+            }, [symbol, timeframe]);
+
+            return <canvas ref={chartRef} className="w-full h-full"></canvas>;
+        };
+        const App = () => {
+            const [currentUser, setCurrentUser] = useState(null);
+            const [currentView, setCurrentView] = useState('login');
+            const [theme, setTheme] = useState('dark');
+            const [notifications, setNotifications] = useState([]);
+            const [marketData, setMarketData] = useState([]);
+            const [userPortfolio, setUserPortfolio] = useState([]);
+            const [socialPosts, setSocialPosts] = useState([]);
+            const [orders, setOrders] = useState([]);
+            const [compliance, setCompliance] = useState(null);
+
+            // Mock users database
+            const [users, setUsers] = useState([
+                {
+                    id: 1,
+                    email: 'admin@cryptoflow.com',
+                    password: 'admin123',
+                    role: 'admin',
+                    kycStatus: 'verified',
+                    riskProfile: 'aggressive',
+                    positions: [],
+                    referralCode: 'ADMIN001',
+                    referrals: []
+                }
+            ]);
+
+            // Load market data
+            useEffect(() => {
+                const loadMarketData = async () => {
+                    const prices = await ExchangeAPI.getPrices();
+                    setMarketData(prices);
+                };
+                
+                loadMarketData();
+                const interval = setInterval(loadMarketData, 5000);
+                return () => clearInterval(interval);
+            }, []);
+
+            // Global state value
+            const globalState = {
+                currentUser,
+                setCurrentUser,
+                currentView,
+                setCurrentView,
+                theme,
+                setTheme,
+                notifications,
+                setNotifications,
+                marketData,
+                setMarketData,
+                userPortfolio,
+                setUserPortfolio,
+                socialPosts,
+                setSocialPosts,
+                orders,
+                setOrders,
+                users,
+                setUsers,
+                compliance,
+                setCompliance
+            };
+
+            return (
+                <GlobalStateContext.Provider value={globalState}>
+                    <div className={`min-h-screen ${theme === 'dark' ? 'dark-theme' : 'bg-white text-gray-900'}`}>
+                        {currentUser ? <MainDashboard /> : <AuthComponent />}
+                        <NotificationSystem />
+                    </div>
+                </GlobalStateContext.Provider>
+            );
+        };
+
+        // Authentication Component
+        const AuthComponent = () => {
+            const { setCurrentUser, setCurrentView, users, setUsers } = useGlobalState();
+            const [isLogin, setIsLogin] = useState(true);
+            const [formData, setFormData] = useState({
+                email: '',
+                password: '',
+                confirmPassword: '',
+                country: '',
+                referralCode: ''
+            });
+            const [loading, setLoading] = useState(false);
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+
+                // Rate limiting check
+                if (!rateLimiter.check(formData.email, 5, 300000)) { // 5 attempts per 5 minutes
+                    alert('Too many login attempts. Please try again later.');
+                    setLoading(false);
+                    return;
+                }
+
+                if (isLogin) {
+                    // Login logic with hashed password
+                    const hashedPassword = CryptoJS.SHA256(formData.password).toString();
+                    const user = users.find(u => u.email === formData.email && u.password === hashedPassword);
+                    
+                    if (user && !user.isLocked) {
+                        const token = generateToken(user);
+                        const updatedUser = { 
+                            ...user, 
+                            sessionToken: token, 
+                            lastLogin: new Date().toISOString(),
+                            failedAttempts: 0 
+                        };
+                        
+                        setUsers(users.map(u => u.id === user.id ? updatedUser : u));
+                        setCurrentUser(updatedUser);
+                        setCurrentView('dashboard');
+                    } else {
+                        // Update failed attempts
+                        if (user) {
+                            const failedAttempts = user.failedAttempts + 1;
+                            const isLocked = failedAttempts >= 5;
+                            setUsers(users.map(u => u.id === user.id ? { ...u, failedAttempts, isLocked } : u));
+                        }
+                        alert('Invalid credentials or account locked');
+                    }
+                } else {
+                    // Registration logic with enhanced security
+                    if (formData.password !== formData.confirmPassword) {
+                        alert('Passwords do not match');
+                        setLoading(false);
+                        return;
+                    }
+
+                    if (formData.password.length < 8) {
+                        alert('Password must be at least 8 characters long');
+                        setLoading(false);
+                        return;
+                    }
+
+                    const hashedPassword = CryptoJS.SHA256(formData.password).toString();
+                    const newUser = {
+                        id: users.length + 1,
+                        email: formData.email,
+                        password: hashedPassword,
+                        role: 'user',
+                        kycStatus: 'pending',
+                        riskProfile: 'moderate',
+                        positions: [],
+                        referralCode: `REF${Date.now()}`,
+                        referrals: [],
+                        country: formData.country,
+                        createdAt: new Date().toISOString(),
+                        sessionToken: null,
+                        lastLogin: null,
+                        failedAttempts: 0,
+                        isLocked: false
+                    };
+
+                    setUsers([...users, newUser]);
+                    const token = generateToken(newUser);
+                    setCurrentUser({ ...newUser, sessionToken: token });
+                    setCurrentView('kyc');
+                }
+
+                setLoading(false);
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4">
+                    <div className="max-w-md w-full space-y-8">
+                        <div className="text-center">
+                            <h2 className="text-3xl font-bold text-blue-400">CryptoFlow</h2>
+                            <p className="text-gray-400">Enterprise Trading Platform</p>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            <div>
+                                <input
+                                    type="email"
+                                    placeholder="Email"
+                                    value={formData.email}
+                                    onChange={(e) => setFormData({...formData, email: e.target.value})}
+                                    className="w-full p-3 rounded bg-gray-800 border border-gray-600 text-white"
+                                    required
+                                />
+                            </div>
+
+                            <div>
+                                <input
+                                    type="password"
+                                    placeholder="Password"
+                                    value={formData.password}
+                                    onChange={(e) => setFormData({...formData, password: e.target.value})}
+                                    className="w-full p-3 rounded bg-gray-800 border border-gray-600 text-white"
+                                    required
+                                />
+                            </div>
+
+                            {!isLogin && (
+                                <>
+                                    <div>
+                                        <input
+                                            type="password"
+                                            placeholder="Confirm Password"
+                                            value={formData.confirmPassword}
+                                            onChange={(e) => setFormData({...formData, confirmPassword: e.target.value})}
+                                            className="w-full p-3 rounded bg-gray-800 border border-gray-600 text-white"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <select
+                                            value={formData.country}
+                                            onChange={(e) => setFormData({...formData, country: e.target.value})}
+                                            className="w-full p-3 rounded bg-gray-800 border border-gray-600 text-white"
+                                            required
+                                        >
+                                            <option value="">Select Country</option>
+                                            <option value="US">United States</option>
+                                            <option value="UK">United Kingdom</option>
+                                            <option value="DE">Germany</option>
+                                            <option value="JP">Japan</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <input
+                                            type="text"
+                                            placeholder="Referral Code (Optional)"
+                                            value={formData.referralCode}
+                                            onChange={(e) => setFormData({...formData, referralCode: e.target.value})}
+                                            className="w-full p-3 rounded bg-gray-800 border border-gray-600 text-white"
+                                        />
+                                    </div>
+                                </>
+                            )}
+
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full p-3 bg-blue-600 hover:bg-blue-700 rounded text-white font-semibold disabled:opacity-50"
+                            >
+                                {loading ? 'Processing...' : (isLogin ? 'Login' : 'Register')}
+                            </button>
+                        </form>
+
+                        <div className="text-center">
+                            <button
+                                onClick={() => setIsLogin(!isLogin)}
+                                className="text-blue-400 hover:text-blue-300"
+                            >
+                                {isLogin ? 'Need an account? Register' : 'Have an account? Login'}
+                            </button>
+                        </div>
+
+                        <div className="text-center text-sm text-gray-500">
+                            <p>Demo Credentials:</p>
+                            <p>Email: admin@cryptoflow.com</p>
+                            <p>Password: admin123</p>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // KYC Verification Component
+        const KYCComponent = () => {
+            const { currentUser, setCurrentUser, setCurrentView } = useGlobalState();
+            const [step, setStep] = useState(1);
+            const [kycData, setKycData] = useState({
+                firstName: '',
+                lastName: '',
+                dateOfBirth: '',
+                address: '',
+                phoneNumber: '',
+                documents: []
+            });
+            const [loading, setLoading] = useState(false);
+
+            const handleDocumentUpload = (type) => {
+                // Mock document upload
+                const newDoc = {
+                    type,
+                    filename: `${type}_${Date.now()}.pdf`,
+                    uploadDate: new Date().toISOString()
+                };
+                setKycData({
+                    ...kycData,
+                    documents: [...kycData.documents, newDoc]
+                });
+            };
+
+            const submitKYC = async () => {
+                setLoading(true);
+                
+                try {
+                    const verification = await ComplianceModule.verifyKYC(kycData, kycData.documents);
+                    const sanctionsCheck = await ComplianceModule.checkSanctions({
+                        country: currentUser.country,
+                        firstName: kycData.firstName,
+                        lastName: kycData.lastName
+                    });
+
+                    const updatedUser = {
+                        ...currentUser,
+                        kycStatus: verification.status,
+                        kycData: {
+                            ...kycData,
+                            verificationId: verification.verificationId,
+                            riskScore: verification.riskScore,
+                            sanctionsCheck
+                        }
+                    };
+
+                    setCurrentUser(updatedUser);
+                    setCurrentView('dashboard');
+                } catch (error) {
+                    alert('KYC verification failed. Please try again.');
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4">
+                    <div className="max-w-2xl w-full space-y-8">
+                        <div className="text-center">
+                            <h2 className="text-3xl font-bold text-blue-400">KYC Verification</h2>
+                            <p className="text-gray-400">Complete your identity verification</p>
+                        </div>
+
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <div className="flex justify-between mb-6">
+                                {[1, 2, 3].map(num => (
+                                    <div
+                                        key={num}
+                                        className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                                            step >= num ? 'bg-blue-600' : 'bg-gray-600'
+                                        }`}
+                                    >
+                                        {num}
+                                    </div>
+                                ))}
+                            </div>
+
+                            {step === 1 && (
+                                <div className="space-y-4">
+                                    <h3 className="text-xl font-semibold">Personal Information</h3>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <input
+                                            type="text"
+                                            placeholder="First Name"
+                                            value={kycData.firstName}
+                                            onChange={(e) => setKycData({...kycData, firstName: e.target.value})}
+                                            className="p-3 rounded bg-gray-700 border border-gray-600 text-white"
+                                        />
+                                        <input
+                                            type="text"
+                                            placeholder="Last Name"
+                                            value={kycData.lastName}
+                                            onChange={(e) => setKycData({...kycData, lastName: e.target.value})}
+                                            className="p-3 rounded bg-gray-700 border border-gray-600 text-white"
+                                        />
+                                    </div>
+                                    <input
+                                        type="date"
+                                        placeholder="Date of Birth"
+                                        value={kycData.dateOfBirth}
+                                        onChange={(e) => setKycData({...kycData, dateOfBirth: e.target.value})}
+                                        className="w-full p-3 rounded bg-gray-700 border border-gray-600 text-white"
+                                    />
+                                    <input
+                                        type="text"
+                                        placeholder="Phone Number"
+                                        value={kycData.phoneNumber}
+                                        onChange={(e) => setKycData({...kycData, phoneNumber: e.target.value})}
+                                        className="w-full p-3 rounded bg-gray-700 border border-gray-600 text-white"
+                                    />
+                                    <textarea
+                                        placeholder="Address"
+                                        value={kycData.address}
+                                        onChange={(e) => setKycData({...kycData, address: e.target.value})}
+                                        className="w-full p-3 rounded bg-gray-700 border border-gray-600 text-white h-20"
+                                    />
+                                </div>
+                            )}
+
+                            {step === 2 && (
+                                <div className="space-y-4">
+                                    <h3 className="text-xl font-semibold">Document Upload</h3>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="p-4 border-2 border-dashed border-gray-600 rounded text-center">
+                                            <p className="text-gray-400 mb-2">Government ID</p>
+                                            <button
+                                                onClick={() => handleDocumentUpload('government_id')}
+                                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white"
+                                            >
+                                                Upload ID
+                                            </button>
+                                        </div>
+                                        <div className="p-4 border-2 border-dashed border-gray-600 rounded text-center">
+                                            <p className="text-gray-400 mb-2">Proof of Address</p>
+                                            <button
+                                                onClick={() => handleDocumentUpload('proof_of_address')}
+                                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white"
+                                            >
+                                                Upload Document
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="mt-4">
+                                        <h4 className="font-semibold mb-2">Uploaded Documents:</h4>
+                                        {kycData.documents.map((doc, index) => (
+                                            <div key={index} className="flex items-center justify-between p-2 bg-gray-700 rounded mb-2">
+                                                <span>{doc.type}: {doc.filename}</span>
+                                                <span className="text-green-400">✓</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {step === 3 && (
+                                <div className="space-y-4">
+                                    <h3 className="text-xl font-semibold">Review & Submit</h3>
+                                    <div className="space-y-2 text-gray-300">
+                                        <p><strong>Name:</strong> {kycData.firstName} {kycData.lastName}</p>
+                                        <p><strong>Date of Birth:</strong> {kycData.dateOfBirth}</p>
+                                        <p><strong>Phone:</strong> {kycData.phoneNumber}</p>
+                                        <p><strong>Documents:</strong> {kycData.documents.length} uploaded</p>
+                                    </div>
+                                    <div className="p-4 bg-yellow-900 border border-yellow-700 rounded">
+                                        <p className="text-yellow-200">
+                                            By submitting this form, you agree to our Terms of Service and Privacy Policy.
+                                            Your information will be processed according to GDPR and other applicable regulations.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex justify-between mt-6">
+                                <button
+                                    onClick={() => setStep(Math.max(1, step - 1))}
+                                    disabled={step === 1}
+                                    className="px-6 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white disabled:opacity-50"
+                                >
+                                    Previous
+                                </button>
+                                {step < 3 ? (
+                                    <button
+                                        onClick={() => setStep(step + 1)}
+                                        className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white"
+                                    >
+                                        Next
+                                    </button>
+                                ) : (
+                                    <button
+                                        onClick={submitKYC}
+                                        disabled={loading}
+                                        className="px-6 py-2 bg-green-600 hover:bg-green-700 rounded text-white disabled:opacity-50"
+                                    >
+                                        {loading ? 'Submitting...' : 'Submit KYC'}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Main Dashboard
+        const MainDashboard = () => {
+            const { currentView, currentUser } = useGlobalState();
+
+            if (currentUser.kycStatus === 'pending' && currentView !== 'kyc') {
+                return <KYCComponent />;
+            }
+
+            const renderView = () => {
+                switch (currentView) {
+                    case 'kyc':
+                        return <KYCComponent />;
+                    case 'trading':
+                        return <TradingInterface />;
+                    case 'portfolio':
+                        return <PortfolioDashboard />;
+                    case 'arbitrage':
+                        return <ArbitrageDashboard />;
+                    case 'social':
+                        return <SocialFeed />;
+                    case 'reports':
+                        return <ReportsDashboard />;
+                    case 'admin':
+                        return currentUser.role === 'admin' ? <AdminPanel /> : <PortfolioDashboard />;
+                    case 'compliance':
+                        return <ComplianceDashboard />;
+                    default:
+                        return <PortfolioDashboard />;
+                }
+            };
+
+            return (
+                <div className="flex h-screen">
+                    <Sidebar />
+                    <div className="flex-1 overflow-auto">
+                        <TopBar />
+                        <main className="p-6">
+                            {renderView()}
+                        </main>
+                    </div>
+                </div>
+            );
+        };
+
+        // Sidebar Component
+        const Sidebar = () => {
+            const { currentView, setCurrentView, currentUser } = useGlobalState();
+
+            const menuItems = [
+                { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+                { id: 'trading', label: 'Trading', icon: '📈' },
+                { id: 'portfolio', label: 'Portfolio', icon: '💼' },
+                { id: 'arbitrage', label: 'Arbitrage', icon: '🔄' },
+                { id: 'social', label: 'Social', icon: '👥' },
+                { id: 'compliance', label: 'Compliance', icon: '🛡️' },
+                { id: 'reports', label: 'Reports', icon: '📋' },
+                ...(currentUser.role === 'admin' ? [{ id: 'admin', label: 'Admin', icon: '⚙️' }] : [])
+            ];
+
+            return (
+                <div className="w-64 bg-gray-900 p-4">
+                    <div className="text-center mb-8">
+                        <h1 className="text-xl font-bold text-blue-400">CryptoFlow</h1>
+                        <p className="text-xs text-gray-400">Enterprise Platform</p>
+                    </div>
+
+                    <nav className="space-y-2">
+                        {menuItems.map(item => (
+                            <button
+                                key={item.id}
+                                onClick={() => setCurrentView(item.id)}
+                                className={`w-full text-left p-3 rounded flex items-center space-x-3 transition-colors ${
+                                    currentView === item.id 
+                                        ? 'bg-blue-600 text-white' 
+                                        : 'text-gray-300 hover:bg-gray-800'
+                                }`}
+                            >
+                                <span>{item.icon}</span>
+                                <span>{item.label}</span>
+                            </button>
+                        ))}
+                    </nav>
+
+                    <div className="mt-8 p-3 bg-gray-800 rounded">
+                        <div className="flex items-center space-x-2">
+                            <div className={`w-3 h-3 rounded-full ${
+                                currentUser.kycStatus === 'verified' ? 'bg-green-400' :
+                                currentUser.kycStatus === 'pending' ? 'bg-yellow-400' : 'bg-red-400'
+                            }`}></div>
+                            <span className="text-sm text-gray-300">KYC: {currentUser.kycStatus}</span>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Top Bar Component
+        const TopBar = () => {
+            const { currentUser, setCurrentUser, setCurrentView, theme, setTheme, notifications } = useGlobalState();
+
+            const logout = () => {
+                setCurrentUser(null);
+                setCurrentView('login');
+            };
+
+            return (
+                <div className="bg-gray-800 p-4 flex justify-between items-center border-b border-gray-700">
+                    <div className="flex items-center space-x-4">
+                        <h2 className="text-lg font-semibold text-white">Welcome, {currentUser.email}</h2>
+                        <div className={`px-2 py-1 rounded text-xs ${
+                            currentUser.kycStatus === 'verified' ? 'bg-green-600' :
+                            currentUser.kycStatus === 'pending' ? 'bg-yellow-600' : 'bg-red-600'
+                        }`}>
+                            {currentUser.kycStatus.toUpperCase()}
+                        </div>
+                    </div>
+
+                    <div className="flex items-center space-x-4">
+                        <button
+                            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                            className="p-2 text-gray-300 hover:text-white"
+                        >
+                            {theme === 'dark' ? '☀️' : '🌙'}
+                        </button>
+
+                        <div className="relative">
+                            <button className="p-2 text-gray-300 hover:text-white relative">
+                                🔔
+                                {notifications.length > 0 && (
+                                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-xs flex items-center justify-center">
+                                        {notifications.length}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
+
+                        <button
+                            onClick={logout}
+                            className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-white text-sm"
+                        >
+                            Logout
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // Portfolio Dashboard
+        const PortfolioDashboard = () => {
+            const { currentUser, marketData } = useGlobalState();
+            const [portfolio, setPortfolio] = useState([
+                { symbol: 'BTC', amount: 0.5, value: 25000, change24h: 2.5 },
+                { symbol: 'ETH', amount: 10, value: 20000, change24h: -1.2 },
+                { symbol: 'BNB', amount: 100, value: 50000, change24h: 3.1 }
+            ]);
+
+            const totalValue = portfolio.reduce((sum, asset) => sum + asset.value, 0);
+            const totalChange = portfolio.reduce((sum, asset) => sum + (asset.value * asset.change24h / 100), 0);
+
+            return (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-gray-300 mb-2">Total Portfolio Value</h3>
+                            <p className="text-3xl font-bold text-white">${totalValue.toLocaleString()}</p>
+                            <p className={`text-sm ${totalChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                {totalChange >= 0 ? '+' : ''}${totalChange.toFixed(2)} (24h)
+                            </p>
+                        </div>
+
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-gray-300 mb-2">Total P&L</h3>
+                            <p className="text-3xl font-bold text-green-400">+$12,450</p>
+                            <p className="text-sm text-gray-400">+18.2% All Time</p>
+                        </div>
+
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-gray-300 mb-2">Risk Score</h3>
+                            <p className="text-3xl font-bold text-yellow-400">7.2</p>
+                            <p className="text-sm text-gray-400">Moderate Risk</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">Portfolio Holdings</h3>
+                            <div className="space-y-3">
+                                {portfolio.map((asset, index) => (
+                                    <div key={index} className="flex justify-between items-center p-3 bg-gray-700 rounded">
+                                        <div>
+                                            <p className="font-semibold text-white">{asset.symbol}</p>
+                                            <p className="text-sm text-gray-400">{asset.amount} coins</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="font-semibold text-white">${asset.value.toLocaleString()}</p>
+                                            <p className={`text-sm ${asset.change24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                {asset.change24h >= 0 ? '+' : ''}{asset.change24h}%
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">Market Overview</h3>
+                            <div className="space-y-3">
+                                {marketData.slice(0, 4).map((market, index) => (
+                                    <div key={index} className="flex justify-between items-center p-3 bg-gray-700 rounded">
+                                        <div>
+                                            <p className="font-semibold text-white">{market.symbol}</p>
+                                            <p className="text-sm text-gray-400">Vol: {market.volume}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="font-semibold text-white">${market.price}</p>
+                                            <p className={`text-sm ${market.change24h >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                {market.change24h >= 0 ? '+' : ''}{market.change24h}%
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-800 p-6 rounded-lg">
+                        <h3 className="text-lg font-semibold text-white mb-4">Recent Transactions</h3>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="border-b border-gray-700">
+                                        <th className="pb-2 text-gray-300">Date</th>
+                                        <th className="pb-2 text-gray-300">Type</th>
+                                        <th className="pb-2 text-gray-300">Pair</th>
+                                        <th className="pb-2 text-gray-300">Amount</th>
+                                        <th className="pb-2 text-gray-300">Price</th>
+                                        <th className="pb-2 text-gray-300">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr className="border-b border-gray-700">
+                                        <td className="py-2 text-gray-300">2025-06-08 10:30</td>
+                                        <td className="py-2 text-green-400">BUY</td>
+                                        <td className="py-2 text-white">BTC/USDT</td>
+                                        <td className="py-2 text-white">0.1 BTC</td>
+                                        <td className="py-2 text-white">$50,000</td>
+                                        <td className="py-2 text-green-400">Filled</td>
+                                    </tr>
+                                    <tr className="border-b border-gray-700">
+                                        <td className="py-2 text-gray-300">2025-06-08 09:15</td>
+                                        <td className="py-2 text-red-400">SELL</td>
+                                        <td className="py-2 text-white">ETH/USDT</td>
+                                        <td className="py-2 text-white">2 ETH</td>
+                                        <td className="py-2 text-white">$2,000</td>
+                                        <td className="py-2 text-green-400">Filled</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Trading Interface
+        const TradingInterface = () => {
+            const { marketData } = useGlobalState();
+            const [selectedPair, setSelectedPair] = useState('BTC/USDT');
+            const [orderType, setOrderType] = useState('market');
+            const [side, setSide] = useState('buy');
+            const [amount, setAmount] = useState('');
+            const [price, setPrice] = useState('');
+            const [orderbook, setOrderbook] = useState({ bids: [], asks: [] });
+            const [activeOrders, setActiveOrders] = useState([]);
+
+            useEffect(() => {
+                const loadOrderbook = async () => {
+                    const data = await ExchangeAPI.getOrderbook(selectedPair);
+                    setOrderbook(data);
+                };
+                loadOrderbook();
+                const interval = setInterval(loadOrderbook, 2000);
+                return () => clearInterval(interval);
+            }, [selectedPair]);
+
+            const submitOrder = async () => {
+                if (!amount) return;
+
+                const order = {
+                    pair: selectedPair,
+                    side,
+                    type: orderType,
+                    amount: parseFloat(amount),
+                    price: orderType === 'limit' ? parseFloat(price) : null,
+                    timestamp: new Date().toISOString()
+                };
+
+                try {
+                    const result = await ExchangeAPI.executeOrder(order);
+                    setActiveOrders([...activeOrders, { ...order, ...result }]);
+                    setAmount('');
+                    setPrice('');
+                    alert(`Order ${result.status}: ${result.executedAmount} at $${result.executedPrice}`);
+                } catch (error) {
+                    alert('Order failed');
+                }
+            };
+
+            return (
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-full">
+                    {/* Market Selection */}
+                    <div className="bg-gray-800 p-4 rounded-lg">
+                        <h3 className="text-lg font-semibold text-white mb-4">Markets</h3>
+                        <div className="space-y-2">
+                            {marketData.map((market, index) => (
+                                <button
+                                    key={index}
+                                    onClick={() => setSelectedPair(market.symbol)}
+                                    className={`w-full text-left p-3 rounded ${
+                                        selectedPair === market.symbol ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
+                                    }`}
+                                >
+                                    <div className="flex justify-between">
+                                        <span className="text-white font-semibold">{market.symbol}</span>
+                                        <span className={market.change24h >= 0 ? 'text-green-400' : 'text-red-400'}>
+                                            {market.change24h >= 0 ? '+' : ''}{market.change24h}%
+                                        </span>
+                                    </div>
+                                    <div className="text-sm text-gray-300">${market.price}</div>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Chart Area */}
+                    <div className="lg:col-span-2 bg-gray-800 p-4 rounded-lg">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-semibold text-white">{selectedPair}</h3>
+                            <div className="flex space-x-2">
+                                {['1m', '5m', '15m', '1h', '4h', '1d'].map(timeframe => (
+                                    <button
+                                        key={timeframe}
+                                        className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-white text-sm"
+                                    >
+                                        {timeframe}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        <div className="h-96 bg-gray-900 rounded p-2">
+                            <TradingChart symbol={selectedPair} timeframe="1h" />
+                        </div>
+                    </div>
+
+                    {/* Order Book & Trading */}
+                    <div className="space-y-4">
+                        {/* Order Form */}
+                        <div className="bg-gray-800 p-4 rounded-lg">
+                            <div className="flex mb-4">
+                                <button
+                                    onClick={() => setSide('buy')}
+                                    className={`flex-1 p-2 rounded-l ${side === 'buy' ? 'bg-green-600' : 'bg-gray-700'}`}
+                                >
+                                    BUY
+                                </button>
+                                <button
+                                    onClick={() => setSide('sell')}
+                                    className={`flex-1 p-2 rounded-r ${side === 'sell' ? 'bg-red-600' : 'bg-gray-700'}`}
+                                >
+                                    SELL
+                                </button>
+                            </div>
+
+                            <div className="space-y-3">
+                                <select
+                                    value={orderType}
+                                    onChange={(e) => setOrderType(e.target.value)}
+                                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                                >
+                                    <option value="market">Market</option>
+                                    <option value="limit">Limit</option>
+                                    <option value="stop">Stop</option>
+                                </select>
+
+                                <input
+                                    type="number"
+                                    placeholder="Amount"
+                                    value={amount}
+                                    onChange={(e) => setAmount(e.target.value)}
+                                    className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                                />
+
+                                {orderType === 'limit' && (
+                                    <input
+                                        type="number"
+                                        placeholder="Price"
+                                        value={price}
+                                        onChange={(e) => setPrice(e.target.value)}
+                                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                                    />
+                                )}
+
+                                <button
+                                    onClick={submitOrder}
+                                    className={`w-full p-3 rounded font-semibold ${
+                                        side === 'buy' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
+                                    }`}
+                                >
+                                    {side.toUpperCase()} {selectedPair.split('/')[0]}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Order Book */}
+                        <div className="bg-gray-800 p-4 rounded-lg">
+                            <h4 className="font-semibold text-white mb-3">Order Book</h4>
+                            <div className="orderbook text-xs">
+                                <div className="grid grid-cols-2 gap-2 mb-2 font-semibold text-gray-400">
+                                    <span>Price</span>
+                                    <span>Amount</span>
+                                </div>
+                                
+                                {/* Asks */}
+                                <div className="space-y-1 mb-2">
+                                    {orderbook.asks.slice(0, 8).map((ask, index) => (
+                                        <div key={index} className="grid grid-cols-2 gap-2 text-red-400">
+                                            <span>{ask.price}</span>
+                                            <span>{ask.amount}</span>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="border-t border-gray-600 my-2"></div>
+
+                                {/* Bids */}
+                                <div className="space-y-1">
+                                    {orderbook.bids.slice(0, 8).map((bid, index) => (
+                                        <div key={index} className="grid grid-cols-2 gap-2 text-green-400">
+                                            <span>{bid.price}</span>
+                                            <span>{bid.amount}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Social Feed Component
+        const SocialFeed = () => {
+            const { socialPosts, setSocialPosts, currentUser } = useGlobalState();
+            const [newPost, setNewPost] = useState('');
+            const [selectedTab, setSelectedTab] = useState('feed');
+
+            const addPost = () => {
+                if (!newPost.trim()) return;
+
+                const post = {
+                    id: Date.now(),
+                    user: currentUser.email,
+                    content: newPost,
+                    timestamp: new Date().toISOString(),
+                    likes: 0,
+                    comments: [],
+                    type: 'text'
+                };
+
+                setSocialPosts([post, ...socialPosts]);
+                setNewPost('');
+            };
+
+            const likePost = (postId) => {
+                setSocialPosts(socialPosts.map(post => 
+                    post.id === postId ? { ...post, likes: post.likes + 1 } : post
+                ));
+            };
+
+            // Mock posts if empty
+            useEffect(() => {
+                if (socialPosts.length === 0) {
+                    setSocialPosts([
+                        {
+                            id: 1,
+                            user: 'trader123@example.com',
+                            content: 'BTC looking bullish! Just opened a long position at $50,000. Target: $55,000 🚀',
+                            timestamp: '2025-06-08T10:30:00Z',
+                            likes: 15,
+                            comments: [
+                                { user: 'crypto_fan', content: 'Great call! Following your trades.' }
+                            ],
+                            type: 'signal'
+                        },
+                        {
+                            id: 2,
+                            user: 'analyst_pro@example.com',
+                            content: 'Market analysis: Expecting volatility this week due to Fed announcements. Stay cautious with leverage.',
+                            timestamp: '2025-06-08T09:15:00Z',
+                            likes: 23,
+                            comments: [],
+                            type: 'analysis'
+                        }
+                    ]);
+                }
+            }, []);
+
+            return (
+                <div className="max-w-4xl mx-auto space-y-6">
+                    <div className="bg-gray-800 p-6 rounded-lg">
+                        <div className="flex space-x-4 mb-4">
+                            {['feed', 'signals', 'following'].map(tab => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setSelectedTab(tab)}
+                                    className={`px-4 py-2 rounded capitalize ${
+                                        selectedTab === tab ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
+                                    }`}
+                                >
+                                    {tab}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="flex space-x-4">
+                            <textarea
+                                value={newPost}
+                                onChange={(e) => setNewPost(e.target.value)}
+                                placeholder="Share your trading insights, signals, or market analysis..."
+                                className="flex-1 p-3 bg-gray-700 border border-gray-600 rounded text-white resize-none h-20"
+                            />
+                            <button
+                                onClick={addPost}
+                                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white"
+                            >
+                                Post
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        {socialPosts.map(post => (
+                            <div key={post.id} className="bg-gray-800 p-6 rounded-lg social-post">
+                                <div className="flex justify-between items-start mb-3">
+                                    <div className="flex items-center space-x-3">
+                                        <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+                                            {post.user.charAt(0).toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-white">{post.user}</p>
+                                            <p className="text-sm text-gray-400">
+                                                {new Date(post.timestamp).toLocaleString()}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className={`px-2 py-1 rounded text-xs ${
+                                        post.type === 'signal' ? 'bg-green-600' :
+                                        post.type === 'analysis' ? 'bg-blue-600' : 'bg-gray-600'
+                                    }`}>
+                                        {post.type}
+                                    </span>
+                                </div>
+
+                                <p className="text-gray-300 mb-4">{post.content}</p>
+
+                                <div className="flex items-center space-x-6">
+                                    <button
+                                        onClick={() => likePost(post.id)}
+                                        className="flex items-center space-x-2 text-gray-400 hover:text-red-400"
+                                    >
+                                        <span>❤️</span>
+                                        <span>{post.likes}</span>
+                                    </button>
+                                    <button className="flex items-center space-x-2 text-gray-400 hover:text-blue-400">
+                                        <span>💬</span>
+                                        <span>{post.comments.length}</span>
+                                    </button>
+                                    <button className="text-gray-400 hover:text-green-400">
+                                        📤 Share
+                                    </button>
+                                </div>
+
+                                {post.comments.length > 0 && (
+                                    <div className="mt-4 pl-4 border-l-2 border-gray-600">
+                                        {post.comments.map((comment, index) => (
+                                            <div key={index} className="py-2">
+                                                <span className="font-semibold text-blue-400">{comment.user}:</span>
+                                                <span className="text-gray-300 ml-2">{comment.content}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        // Admin Panel
+        const AdminPanel = () => {
+            const { users, setUsers, currentUser } = useGlobalState();
+            const [selectedTab, setSelectedTab] = useState('users');
+            const [systemStats, setSystemStats] = useState({
+                totalUsers: users.length,
+                totalVolume: 15670000,
+                totalRevenue: 234500,
+                activeOrders: 156
+            });
+
+            const updateUserStatus = (userId, status) => {
+                setUsers(users.map(user => 
+                    user.id === userId ? { ...user, kycStatus: status } : user
+                ));
+            };
+
+            const generateReport = () => {
+                const report = {
+                    date: new Date().toISOString(),
+                    users: users.length,
+                    verified: users.filter(u => u.kycStatus === 'verified').length,
+                    pending: users.filter(u => u.kycStatus === 'pending').length,
+                    revenue: systemStats.totalRevenue
+                };
+                
+                console.log('Generated Report:', report);
+                alert('Report generated successfully!');
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-gray-300 mb-2">Total Users</h3>
+                            <p className="text-3xl font-bold text-white">{systemStats.totalUsers}</p>
+                        </div>
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-gray-300 mb-2">Total Volume</h3>
+                            <p className="text-3xl font-bold text-white">${systemStats.totalVolume.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-gray-300 mb-2">Revenue</h3>
+                            <p className="text-3xl font-bold text-green-400">${systemStats.totalRevenue.toLocaleString()}</p>
+                        </div>
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-gray-300 mb-2">Active Orders</h3>
+                            <p className="text-3xl font-bold text-blue-400">{systemStats.activeOrders}</p>
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-800 p-6 rounded-lg">
+                        <div className="flex justify-between items-center mb-4">
+                            <div className="flex space-x-4">
+                                {['users', 'compliance', 'reports'].map(tab => (
+                                    <button
+                                        key={tab}
+                                        onClick={() => setSelectedTab(tab)}
+                                        className={`px-4 py-2 rounded capitalize ${
+                                            selectedTab === tab ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
+                                        }`}
+                                    >
+                                        {tab}
+                                    </button>
+                                ))}
+                            </div>
+                            <button
+                                onClick={generateReport}
+                                className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white"
+                            >
+                                Generate Report
+                            </button>
+                        </div>
+
+                        {selectedTab === 'users' && (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                    <thead>
+                                        <tr className="border-b border-gray-700">
+                                            <th className="pb-2 text-gray-300">ID</th>
+                                            <th className="pb-2 text-gray-300">Email</th>
+                                            <th className="pb-2 text-gray-300">KYC Status</th>
+                                            <th className="pb-2 text-gray-300">Role</th>
+                                            <th className="pb-2 text-gray-300">Created</th>
+                                            <th className="pb-2 text-gray-300">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {users.map(user => (
+                                            <tr key={user.id} className="border-b border-gray-700">
+                                                <td className="py-2 text-white">{user.id}</td>
+                                                <td className="py-2 text-white">{user.email}</td>
+                                                <td className="py-2">
+                                                    <span className={`px-2 py-1 rounded text-xs ${
+                                                        user.kycStatus === 'verified' ? 'bg-green-600' :
+                                                        user.kycStatus === 'pending' ? 'bg-yellow-600' : 'bg-red-600'
+                                                    }`}>
+                                                        {user.kycStatus}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2 text-white">{user.role}</td>
+                                                <td className="py-2 text-gray-300">
+                                                    {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
+                                                </td>
+                                                <td className="py-2 space-x-2">
+                                                    <button
+                                                        onClick={() => updateUserStatus(user.id, 'verified')}
+                                                        className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs"
+                                                    >
+                                                        Verify
+                                                    </button>
+                                                    <button
+                                                        onClick={() => updateUserStatus(user.id, 'rejected')}
+                                                        className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs"
+                                                    >
+                                                        Reject
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+
+                        {selectedTab === 'compliance' && (
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-semibold text-white">Compliance Dashboard</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="bg-gray-700 p-4 rounded">
+                                        <h4 className="font-semibold text-white mb-2">KYC Summary</h4>
+                                        <p className="text-gray-300">Verified: {users.filter(u => u.kycStatus === 'verified').length}</p>
+                                        <p className="text-gray-300">Pending: {users.filter(u => u.kycStatus === 'pending').length}</p>
+                                        <p className="text-gray-300">Rejected: {users.filter(u => u.kycStatus === 'rejected').length}</p>
+                                    </div>
+                                    <div className="bg-gray-700 p-4 rounded">
+                                        <h4 className="font-semibold text-white mb-2">Risk Alerts</h4>
+                                        <p className="text-yellow-400">2 High-risk transactions detected</p>
+                                        <p className="text-red-400">1 Sanctions list match pending review</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {selectedTab === 'reports' && (
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-semibold text-white">Reports & Analytics</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <button className="p-4 bg-blue-600 hover:bg-blue-700 rounded text-left">
+                                        <h4 className="font-semibold">Daily Trading Report</h4>
+                                        <p className="text-sm opacity-80">Generate daily volume and P&L report</p>
+                                    </button>
+                                    <button className="p-4 bg-green-600 hover:bg-green-700 rounded text-left">
+                                        <h4 className="font-semibold">Compliance Report</h4>
+                                        <p className="text-sm opacity-80">AML/KYC compliance summary</p>
+                                    </button>
+                                    <button className="p-4 bg-purple-600 hover:bg-purple-700 rounded text-left">
+                                        <h4 className="font-semibold">Revenue Analysis</h4>
+                                        <p className="text-sm opacity-80">Fee collection and profit analysis</p>
+                                    </button>
+                                    <button className="p-4 bg-orange-600 hover:bg-orange-700 rounded text-left">
+                                        <h4 className="font-semibold">Risk Assessment</h4>
+                                        <p className="text-sm opacity-80">Portfolio risk and exposure report</p>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // Arbitrage Dashboard
+        const ArbitrageDashboard = () => {
+            const [opportunities, setOpportunities] = useState([]);
+            const [autoTrading, setAutoTrading] = useState(false);
+            const [minSpread, setMinSpread] = useState(0.5);
+            const [maxAmount, setMaxAmount] = useState(1000);
+            const [executedTrades, setExecutedTrades] = useState([]);
+            const [loading, setLoading] = useState(false);
+
+            useEffect(() => {
+                const scanOpportunities = async () => {
+                    if (loading) return;
+                    setLoading(true);
+                    
+                    try {
+                        const opps = await ArbitrageEngine.scanArbitrageOpportunities();
+                        setOpportunities(opps.filter(op => op.spread >= minSpread));
+                    } catch (error) {
+                        console.error('Failed to scan opportunities:', error);
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+
+                scanOpportunities();
+                const interval = setInterval(scanOpportunities, 10000); // Scan every 10 seconds
+                return () => clearInterval(interval);
+            }, [minSpread]);
+
+            const executeArbitrage = async (opportunity) => {
+                try {
+                    const result = await ArbitrageEngine.executeArbitrageOrder(opportunity, maxAmount);
+                    
+                    if (result.success) {
+                        const trade = {
+                            ...opportunity,
+                            ...result,
+                            timestamp: new Date().toISOString()
+                        };
+                        
+                        setExecutedTrades([trade, ...executedTrades]);
+                        alert(`Arbitrage executed! Profit: ${result.actualProfit}`);
+                    }
+                } catch (error) {
+                    alert('Arbitrage execution failed');
+                }
+            };
+
+            useEffect(() => {
+                if (autoTrading && opportunities.length > 0) {
+                    const bestOpportunity = opportunities.reduce((best, current) => 
+                        current.spread > best.spread ? current : best
+                    );
+                    
+                    if (bestOpportunity.spread > minSpread) {
+                        executeArbitrage(bestOpportunity);
+                    }
+                }
+            }, [opportunities, autoTrading]);
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-2xl font-bold text-white">Arbitrage Dashboard</h2>
+                        <div className="flex items-center space-x-4">
+                            <label className="flex items-center space-x-2">
+                                <input
+                                    type="checkbox"
+                                    checked={autoTrading}
+                                    onChange={(e) => setAutoTrading(e.target.checked)}
+                                    className="form-checkbox"
+                                />
+                                <span className="text-white">Auto Trading</span>
+                            </label>
+                            <button
+                                onClick={() => setOpportunities([])}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white"
+                            >
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">Settings</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-gray-300 mb-2">Min Spread (%)</label>
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        value={minSpread}
+                                        onChange={(e) => setMinSpread(parseFloat(e.target.value))}
+                                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-gray-300 mb-2">Max Amount ($)</label>
+                                    <input
+                                        type="number"
+                                        value={maxAmount}
+                                        onChange={(e) => setMaxAmount(parseInt(e.target.value))}
+                                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">Statistics</h3>
+                            <div className="space-y-2">
+                                <p className="text-gray-300">Active Opportunities: <span className="text-green-400">{opportunities.length}</span></p>
+                                <p className="text-gray-300">Executed Trades: <span className="text-blue-400">{executedTrades.length}</span></p>
+                                <p className="text-gray-300">Total Profit: <span className="text-green-400">
+                                    ${executedTrades.reduce((sum, trade) => sum + parseFloat(trade.actualProfit || 0), 0).toFixed(2)}
+                                </span></p>
+                                <p className="text-gray-300">Auto Trading: <span className={autoTrading ? 'text-green-400' : 'text-red-400'}>
+                                    {autoTrading ? 'ON' : 'OFF'}
+                                </span></p>
+                            </div>
+                        </div>
+
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">Best Opportunity</h3>
+                            {opportunities.length > 0 ? (
+                                <div className="space-y-2">
+                                    <p className="text-white font-semibold">{opportunities[0].symbol}</p>
+                                    <p className="text-gray-300">Spread: <span className="text-green-400">{opportunities[0].spread}%</span></p>
+                                    <p className="text-gray-300">Profit: <span className="text-green-400">${opportunities[0].profit}</span></p>
+                                    <p className="text-gray-300">{opportunities[0].buyExchange} → {opportunities[0].sellExchange}</p>
+                                </div>
+                            ) : (
+                                <p className="text-gray-400">No opportunities available</p>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">Current Opportunities</h3>
+                            <div className="space-y-3 max-h-96 overflow-y-auto">
+                                {loading ? (
+                                    <p className="text-gray-400">Scanning for opportunities...</p>
+                                ) : opportunities.length > 0 ? (
+                                    opportunities.map((opp, index) => (
+                                        <div key={index} className="p-3 bg-gray-700 rounded">
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <p className="font-semibold text-white">{opp.symbol}</p>
+                                                    <p className="text-sm text-gray-300">
+                                                        {opp.buyExchange} (${opp.buyPrice}) → {opp.sellExchange} (${opp.sellPrice})
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-green-400 font-semibold">{opp.spread}%</p>
+                                                    <button
+                                                        onClick={() => executeArbitrage(opp)}
+                                                        className="mt-1 px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-xs"
+                                                    >
+                                                        Execute
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-gray-400">No arbitrage opportunities found</p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">Executed Trades</h3>
+                            <div className="space-y-3 max-h-96 overflow-y-auto">
+                                {executedTrades.length > 0 ? (
+                                    executedTrades.map((trade, index) => (
+                                        <div key={index} className="p-3 bg-gray-700 rounded">
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <p className="font-semibold text-white">{trade.symbol}</p>
+                                                    <p className="text-sm text-gray-300">
+                                                        {new Date(trade.timestamp).toLocaleString()}
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-green-400 font-semibold">+${trade.actualProfit}</p>
+                                                    <p className="text-xs text-gray-400">{trade.executionTime}</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                ) : (
+                                    <p className="text-gray-400">No executed trades yet</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Reports Dashboard
+        const ReportsDashboard = () => {
+            const { currentUser } = useGlobalState();
+            const [selectedReport, setSelectedReport] = useState('tax');
+            const [reportData, setReportData] = useState(null);
+            const [loading, setLoading] = useState(false);
+            const [taxYear, setTaxYear] = useState(2025);
+
+            const mockTransactions = [
+                {
+                    date: '2025-06-01',
+                    asset: 'BTC',
+                    type: 'sell',
+                    buyPrice: 45000,
+                    sellPrice: 50000,
+                    buyDate: '2025-05-01',
+                    sellDate: '2025-06-01',
+                    quantity: 1,
+                    amount: 50000
+                },
+                {
+                    date: '2025-06-05',
+                    asset: 'ETH',
+                    type: 'sell',
+                    buyPrice: 2000,
+                    sellPrice: 2200,
+                    buyDate: '2025-05-15',
+                    sellDate: '2025-06-05',
+                    quantity: 10,
+                    amount: 22000
+                }
+            ];
+
+            const generateReport = async () => {
+                setLoading(true);
+                
+                try {
+                    await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate API call
+                    
+                    let data;
+                    switch (selectedReport) {
+                        case 'tax':
+                            data = ReportingEngine.generateTaxReport(mockTransactions, taxYear);
+                            break;
+                        case 'compliance':
+                            data = ReportingEngine.generateComplianceReport([currentUser], mockTransactions);
+                            break;
+                        case 'portfolio':
+                            data = {
+                                reportType: 'Portfolio Performance',
+                                period: '30 days',
+                                totalValue: 95000,
+                                totalReturn: 15.2,
+                                sharpeRatio: 1.8,
+                                maxDrawdown: -5.3,
+                                winRate: 68.5,
+                                assets: [
+                                    { symbol: 'BTC', allocation: 45, return: 12.5 },
+                                    { symbol: 'ETH', allocation: 35, return: 18.2 },
+                                    { symbol: 'Others', allocation: 20, return: 8.7 }
+                                ]
+                            };
+                            break;
+                        default:
+                            data = { error: 'Unknown report type' };
+                    }
+                    
+                    setReportData(data);
+                } catch (error) {
+                    console.error('Report generation failed:', error);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const exportReport = (format) => {
+                if (!reportData) return;
+                
+                const dataStr = format === 'json' 
+                    ? JSON.stringify(reportData, null, 2)
+                    : Object.entries(reportData).map(([key, value]) => `${key}: ${value}`).join('\n');
+                
+                const dataUri = 'data:application/' + format + ';charset=utf-8,' + encodeURIComponent(dataStr);
+                const exportFileDefaultName = `${selectedReport}_report_${new Date().toISOString().split('T')[0]}.${format}`;
+                
+                const linkElement = document.createElement('a');
+                linkElement.setAttribute('href', dataUri);
+                linkElement.setAttribute('download', exportFileDefaultName);
+                linkElement.click();
+            };
+
+            return (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center">
+                        <h2 className="text-2xl font-bold text-white">Reports & Analytics</h2>
+                        <div className="flex space-x-2">
+                            {reportData && (
+                                <>
+                                    <button
+                                        onClick={() => exportReport('json')}
+                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-white"
+                                    >
+                                        Export JSON
+                                    </button>
+                                    <button
+                                        onClick={() => exportReport('csv')}
+                                        className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded text-white"
+                                    >
+                                        Export CSV
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                        {/* Report Selection */}
+                        <div className="bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">Report Type</h3>
+                            <div className="space-y-3">
+                                {[
+                                    { id: 'tax', label: 'Tax Report', icon: '📊' },
+                                    { id: 'compliance', label: 'Compliance Report', icon: '🛡️' },
+                                    { id: 'portfolio', label: 'Portfolio Performance', icon: '💼' },
+                                    { id: 'trading', label: 'Trading Activity', icon: '📈' }
+                                ].map(report => (
+                                    <button
+                                        key={report.id}
+                                        onClick={() => setSelectedReport(report.id)}
+                                        className={`w-full text-left p-3 rounded flex items-center space-x-3 ${
+                                            selectedReport === report.id ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'
+                                        }`}
+                                    >
+                                        <span>{report.icon}</span>
+                                        <span>{report.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+
+                            {selectedReport === 'tax' && (
+                                <div className="mt-4">
+                                    <label className="block text-gray-300 mb-2">Tax Year</label>
+                                    <select
+                                        value={taxYear}
+                                        onChange={(e) => setTaxYear(parseInt(e.target.value))}
+                                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded text-white"
+                                    >
+                                        <option value={2025}>2025</option>
+                                        <option value={2024}>2024</option>
+                                        <option value={2023}>2023</option>
+                                    </select>
+                                </div>
+                            )}
+
+                            <button
+                                onClick={generateReport}
+                                disabled={loading}
+                                className="w-full mt-4 p-3 bg-green-600 hover:bg-green-700 rounded text-white font-semibold disabled:opacity-50"
+                            >
+                                {loading ? 'Generating...' : 'Generate Report'}
+                            </button>
+                        </div>
+
+                        {/* Report Display */}
+                        <div className="lg:col-span-3 bg-gray-800 p-6 rounded-lg">
+                            <h3 className="text-lg font-semibold text-white mb-4">
+                                {selectedReport.charAt(0).toUpperCase() + selectedReport.slice(1)} Report
+                            </h3>
+                            
+                            {loading ? (
+                                <div className="flex items-center justify-center h-64">
+                                    <div className="text-gray-400">Generating report...</div>
+                                </div>
+                            ) : reportData ? (
+                                <div className="space-y-4">
+                                    {selectedReport === 'tax' && (
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="bg-gray-700 p-4 rounded">
+                                                <p className="text-gray-300">Total Gains</p>
+                                                <p className="text-2xl font-bold text-green-400">${reportData.totalGains}</p>
+                                            </div>
+                                            <div className="bg-gray-700 p-4 rounded">
+                                                <p className="text-gray-300">Total Losses</p>
+                                                <p className="text-2xl font-bold text-red-400">${reportData.totalLosses}</p>
+                                            </div>
+                                            <div className="bg-gray-700 p-4 rounded">
+                                                <p className="text-gray-300">Net Gain/Loss</p>
+                                                <p className={`text-2xl font-bold ${parseFloat(reportData.netGainLoss) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                    ${reportData.netGainLoss}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {selectedReport === 'portfolio' && (
+                                        <div className="space-y-4">
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                                <div className="bg-gray-700 p-4 rounded text-center">
+                                                    <p className="text-gray-300">Total Value</p>
+                                                    <p className="text-xl font-bold text-white">${reportData.totalValue.toLocaleString()}</p>
+                                                </div>
+                                                <div className="bg-gray-700 p-4 rounded text-center">
+                                                    <p className="text-gray-300">Total Return</p>
+                                                    <p className="text-xl font-bold text-green-400">{reportData.totalReturn}%</p>
+                                                </div>
+                                                <div className="bg-gray-700 p-4 rounded text-center">
+                                                    <p className="text-gray-300">Sharpe Ratio</p>
+                                                    <p className="text-xl font-bold text-blue-400">{reportData.sharpeRatio}</p>
+                                                </div>
+                                                <div className="bg-gray-700 p-4 rounded text-center">
+                                                    <p className="text-gray-300">Win Rate</p>
+                                                    <p className="text-xl font-bold text-purple-400">{reportData.winRate}%</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="bg-gray-700 p-4 rounded max-h-64 overflow-y-auto">
+                                        <pre className="text-gray-300 text-sm">
+                                            {JSON.stringify(reportData, null, 2)}
+                                        </pre>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex items-center justify-center h-64">
+                                    <div className="text-center">
+                                        <p className="text-gray-400 mb-4">Select a report type and click Generate Report</p>
+                                        <div className="text-6xl opacity-20">📊</div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        const ComplianceDashboard = () => {
+            const { currentUser, setCompliance, compliance } = useGlobalState();
+            const [documents, setDocuments] = useState([]);
+            const [auditLog, setAuditLog] = useState([]);
+
+            useEffect(() => {
+                // Load compliance data
+                setDocuments([
+                    { id: 1, type: 'Identity Verification', status: 'verified', date: '2025-06-01' },
+                    { id: 2, type: 'Address Verification', status: 'verified', date: '2025-06-01' },
+                    { id: 3, type: 'Source of Funds', status: 'pending', date: '2025-06-08' }
+                ]);
+
+                setAuditLog([
+                    { date: '2025-06-08 10:30', action: 'KYC Document Upload', user: currentUser.email },
+                    { date: '2025-06-08 10:25', action: 'Login Attempt', user: currentUser.email },
+                    { date: '2025-06-08 10:20', action: 'Trade Executed', user: currentUser.email }
+                ]);
+            }, [currentUser]);
+
+            return (
+                <div className="space-y-6">
+                    <div className="bg-gray-800 p-6 rounded-lg">
+                        <h2 className="text-2xl font-bold text-white mb-4">Compliance Dashboard</h2>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                            <div className="bg-gray-700 p-4 rounded">
+                                <h3 className="text-lg font-semibold text-white mb-2">KYC Status</h3>
+                                <div className={`text-2xl font-bold ${
+                                    currentUser.kycStatus === 'verified' ? 'text-green-400' :
+                                    currentUser.kycStatus === 'pending' ? 'text-yellow-400' : 'text-red-400'
+                                }`}>
+                                    {currentUser.kycStatus.toUpperCase()}
+                                </div>
+                            </div>
+                            
+                            <div className="bg-gray-700 p-4 rounded">
+                                <h3 className="text-lg font-semibold text-white mb-2">Risk Score</h3>
+                                <div className="text-2xl font-bold text-yellow-400">
+                                    {currentUser.kycData?.riskScore || 'N/A'}
+                                </div>
+                            </div>
+                            
+                            <div className="bg-gray-700 p-4 rounded">
+                                <h3 className="text-lg font-semibold text-white mb-2">Last Review</h3>
+                                <div className="text-lg text-gray-300">
+                                    {new Date().toLocaleDateString()}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div>
+                                <h3 className="text-lg font-semibold text-white mb-4">Verification Documents</h3>
+                                <div className="space-y-3">
+                                    {documents.map(doc => (
+                                        <div key={doc.id} className="flex justify-between items-center p-3 bg-gray-700 rounded">
+                                            <div>
+                                                <p className="font-semibold text-white">{doc.type}</p>
+                                                <p className="text-sm text-gray-400">Submitted: {doc.date}</p>
+                                            </div>
+                                            <span className={`px-3 py-1 rounded text-sm ${
+                                                doc.status === 'verified' ? 'bg-green-600' :
+                                                doc.status === 'pending' ? 'bg-yellow-600' : 'bg-red-600'
+                                            }`}>
+                                                {doc.status}
+                                            </span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div>
+                                <h3 className="text-lg font-semibold text-white mb-4">Recent Activity</h3>
+                                <div className="space-y-2">
+                                    {auditLog.map((log, index) => (
+                                        <div key={index} className="p-3 bg-gray-700 rounded">
+                                            <div className="flex justify-between text-sm">
+                                                <span className="text-gray-300">{log.action}</span>
+                                                <span className="text-gray-400">{log.date}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-800 p-6 rounded-lg">
+                        <h3 className="text-lg font-semibold text-white mb-4">Regulatory Information</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <h4 className="font-semibold text-white mb-2">Data Protection</h4>
+                                <ul className="text-gray-300 space-y-1">
+                                    <li>✓ GDPR Compliant</li>
+                                    <li>✓ Data Encryption (AES-256)</li>
+                                    <li>✓ Right to Deletion</li>
+                                    <li>✓ Data Export Available</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <h4 className="font-semibold text-white mb-2">Financial Compliance</h4>
+                                <ul className="text-gray-300 space-y-1">
+                                    <li>✓ AML Screening</li>
+                                    <li>✓ FATF Guidelines</li>
+                                    <li>✓ Transaction Monitoring</li>
+                                    <li>✓ Sanctions Screening</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Notification System
+        const NotificationSystem = () => {
+            const { notifications, setNotifications } = useGlobalState();
+
+            useEffect(() => {
+                if (notifications.length > 0) {
+                    const timer = setTimeout(() => {
+                        setNotifications(notifications.slice(1));
+                    }, 5000);
+                    return () => clearTimeout(timer);
+                }
+            }, [notifications]);
+
+            return (
+                <div className="fixed top-4 right-4 space-y-2 z-50">
+                    {notifications.map((notification, index) => (
+                        <div
+                            key={index}
+                            className={`p-4 rounded-lg shadow-lg max-w-sm ${
+                                notification.type === 'success' ? 'bg-green-600' :
+                                notification.type === 'error' ? 'bg-red-600' :
+                                notification.type === 'warning' ? 'bg-yellow-600' : 'bg-blue-600'
+                            }`}
+                        >
+                            <p className="text-white font-semibold">{notification.title}</p>
+                            <p className="text-white text-sm">{notification.message}</p>
+                        </div>
+                    ))}
+                </div>
+            );
+        };
+
+        // Initialize App
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
